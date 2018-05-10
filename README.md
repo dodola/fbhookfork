@@ -1,6 +1,8 @@
 # fbhookfork
 从 fb 的 profilo 项目里提取出来的plt hook 库，自己用
 
+该库不支持arm 64的库,比如无法 支持 /system/lib64/libc.so 里的方法
+
 # Use
 
 ```cpp
