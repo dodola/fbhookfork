@@ -11,10 +11,10 @@
 #include <fcntl.h>
 #include <sys/fcntl.h>
 #include <stdlib.h>
-
+#include <libgen.h>
 #include <sys/system_properties.h>
 #include <vector>
-#include <linker.hpp>
+#include <linker.h>
 #include <hooks.h>
 
 #define  LOG_TAG    "HOOOOOOOOK"
@@ -24,7 +24,6 @@ int *atrace_marker_fd = nullptr;
 std::atomic<uint64_t> *atrace_enabled_tags = nullptr;
 std::atomic<uint64_t> original_tags(UINT64_MAX);
 std::atomic<bool> systrace_installed;
-std::atomic<uint32_t> provider_mask;
 bool first_enable = true;
 
 
@@ -41,19 +40,12 @@ void log_systrace(int fd, const void *buf, size_t count) {
 
 ssize_t write_hook(int fd, const void *buf, size_t count) {
     log_systrace(fd, buf, count);
-    try {
-        return CALL_PREV(&write_hook, fd, buf, count);
-    } catch (linker::internal_exception const &e) {
-    }
+    return CALL_PREV(write_hook, fd, buf, count);
 }
 
-ssize_t
-__write_chk_hook(int fd, const void *buf, size_t count, size_t buf_size) {
+ssize_t __write_chk_hook(int fd, const void *buf, size_t count, size_t buf_size) {
     log_systrace(fd, buf, count);
-    try {
-        return CALL_PREV(&__write_chk_hook, fd, buf, count, buf_size);
-    } catch (linker::internal_exception const &e) {
-    }
+    return CALL_PREV(__write_chk_hook, fd, buf, count, buf_size);
 }
 
 
@@ -65,31 +57,36 @@ std::vector<std::pair<char const *, void *>> &getFunctionHooks() {
     return functionHooks;
 }
 
+// Returns the set of libraries that we don't want to hook.
 std::unordered_set<std::string> &getSeenLibs() {
     static bool init = false;
     static std::unordered_set<std::string> seenLibs;
 
+    // Add this library's name to the set that we won't hook
     if (!init) {
-        seenLibs.insert("/system/lib/libc.so");
+
+        seenLibs.insert("libc.so");
 
         Dl_info info;
         if (!dladdr((void *) &getSeenLibs, &info)) {
             ALOG("Failed to find module name");
         }
         if (info.dli_fname == nullptr) {
+            // Not safe to continue as a thread may block trying to hook the current
+            // library
             throw std::runtime_error("could not resolve current library");
         }
 
-        seenLibs.insert(info.dli_fname);
+        seenLibs.insert(basename(info.dli_fname));
         init = true;
     }
     return seenLibs;
 }
 
-
 void hookLoadedLibs() {
     auto &functionHooks = getFunctionHooks();
     auto &seenLibs = getSeenLibs();
+
     facebook::profilo::hooks::hookLoadedLibs(functionHooks, seenLibs);
 }
 
@@ -104,8 +101,6 @@ static int getAndroidSdk() {
 
 void installSystraceSnooper() {
     auto sdk = getAndroidSdk();
-    ALOG("installSystraceSnooper===========%d", sdk);
-
     {
         std::string lib_name("libcutils.so");
         std::string enabled_tags_sym("atrace_enabled_tags");
@@ -131,31 +126,28 @@ void installSystraceSnooper() {
                         dlsym(handle, enabled_tags_sym.c_str()));
 
         if (atrace_enabled_tags == nullptr) {
-            return;
+            throw std::runtime_error("Enabled Tags not defined");
         }
 
         atrace_marker_fd =
                 reinterpret_cast<int *>(dlsym(handle, fd_sym.c_str()));
-        ALOG(" file path: %d", *atrace_marker_fd);
-        if (atrace_marker_fd == nullptr) {
-            return;
 
+        if (atrace_marker_fd == nullptr) {
+            throw std::runtime_error("Trace FD not defined");
         }
         if (*atrace_marker_fd == -1) {
-            return;
+            throw std::runtime_error("Trace FD not valid");
         }
     }
+
     if (linker_initialize()) {
         throw std::runtime_error("Could not initialize linker library");
     }
 
     hookLoadedLibs();
 
-    ALOG("installSystraceSnooper===========systrace_installed");
-
     systrace_installed = true;
 }
-
 
 void enableSystrace() {
     if (!systrace_installed) {
@@ -163,15 +155,19 @@ void enableSystrace() {
     }
 
     if (!first_enable) {
+        // On every enable, except the first one, find if new libs were loaded
+        // and install systrace hook for them
         try {
             hookLoadedLibs();
         } catch (...) {
+            // It's ok to continue if the refresh has failed
         }
     }
     first_enable = false;
 
     auto prev = atrace_enabled_tags->exchange(UINT64_MAX);
-    if (prev != UINT64_MAX) {
+    if (prev !=
+        UINT64_MAX) { // if we somehow call this twice in a row, don't overwrite the real tags
         original_tags = prev;
     }
 }
@@ -182,11 +178,21 @@ void restoreSystrace() {
     }
 
     uint64_t tags = original_tags;
-    if (tags !=
-        UINT64_MAX) {
+    if (tags != UINT64_MAX) { // if we somehow call this before enableSystrace, don't screw it up
         atrace_enabled_tags->store(tags);
     }
 }
+
+bool installSystraceHook() {
+    try {
+        installSystraceSnooper();
+
+        return true;
+    } catch (const std::runtime_error &e) {
+        return false;
+    }
+}
+
 
 extern "C"
 JNIEXPORT void JNICALL
@@ -204,10 +210,6 @@ Java_com_dodola_tracehooker_Atrace_restoreSystraceNative(JNIEnv *env, jclass typ
 extern "C"
 JNIEXPORT jboolean JNICALL
 Java_com_dodola_tracehooker_Atrace_installSystraceHook(JNIEnv *env, jclass type) {
-    installSystraceSnooper();
+    installSystraceHook();
     return static_cast<jboolean>(true);
-}
-
-JNIEXPORT void JNICALL
-Java_com_dodola_tracehooker_Atrace_hookwrite(JNIEnv *env, jclass type) {
 }

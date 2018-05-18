@@ -20,14 +20,10 @@ namespace facebook {
 
                 std::unordered_set<std::string> *seenLibs =
                         static_cast<std::unordered_set<std::string> *>(data);
-
 //                for (auto const &pair : *seenLibs) {
 //                    ALOG("allowHookCB====%s", pair.c_str());
 //                }
-                ALOG("allowHookCB====%s", seenLibs->find(libname));
-
                 if (seenLibs->find(libname) != seenLibs->cend()) {
-
                     // We already hooked (or saw and decided not to hook) this library.
                     return false;
                 }

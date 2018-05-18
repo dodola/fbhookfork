@@ -1,12 +1,14 @@
 cmake_minimum_required(VERSION 3.6)
 
 set(UTILS_SOURCE
+        elfSharedLibData.cpp
+        hooks.cpp
+        link.cpp
         linker.cpp
-        linker.hpp
         phaser.c
+        sharedlibs.cpp
         sig_safe_write.c
         sigmux.c
-        hooks.cpp
         )
 
 add_library(linker

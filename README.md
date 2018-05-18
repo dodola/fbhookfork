@@ -1,7 +1,7 @@
 # fbhookfork
 从 fb 的 profilo 项目里提取出来的plt hook 库，自己用
 
-该库不支持arm 64的库,比如无法支持 `/system/lib64/libc.so` 里的方法
+代码里做了对 `arm64` 和 `x86` 的支持,但从测试上看还有很多问题,暂时还不支持
 
 # Use
 
@@ -21,22 +21,27 @@ std::unordered_set<std::string> &getSeenLibs() {
     static bool init = false;
     static std::unordered_set<std::string> seenLibs;
 
+    // Add this library's name to the set that we won't hook
     if (!init) {
-        seenLibs.insert("/system/lib/libc.so");
+
+        seenLibs.insert("libc.so");
 
         Dl_info info;
         if (!dladdr((void *) &getSeenLibs, &info)) {
             ALOG("Failed to find module name");
         }
         if (info.dli_fname == nullptr) {
+            // Not safe to continue as a thread may block trying to hook the current
+            // library
             throw std::runtime_error("could not resolve current library");
         }
 
-        seenLibs.insert(info.dli_fname);
+        seenLibs.insert(basename(info.dli_fname));
         init = true;
     }
     return seenLibs;
 }
+
 
 //调用hookLoadedLibs即可
 void hookLoadedLibs() {

@@ -18,7 +18,6 @@ public final class Atrace {
     private static boolean sHasHook = false;
     private static boolean sHookFailed = false;
 
-    public static native void hookwrite();
 
     public static synchronized boolean hasHacks() {
         if (!sHasHook && !sHookFailed) {
