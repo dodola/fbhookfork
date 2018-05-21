@@ -11,7 +11,7 @@ android {
         testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
         externalNativeBuild {
             cmake {
-                abiFilters "armeabi-v7a"//,"arm64-v8a","x86"
+                abiFilters "armeabi-v7a","arm64-v8a"//,"x86"
                 cppFlags ""
 //                arguments "-DANDROID_PLATFORM=android-26"
             }
