@@ -1,7 +1,7 @@
 # fbhookfork
 从 fb 的 profilo 项目里提取出来的plt hook 库，自己用
 
-代码里做了对 `arm64` 和 `x86` 的支持,但从测试上看还有很多问题,暂时还不支持
+支持`armeabi-v7a`,`arm64-v8a`,`x86`
 
 # Use
 
