@@ -174,7 +174,7 @@ elfSharedLibData::elfSharedLibData(dl_phdr_info const* info) {
         // We don't have to ever worry about indexing into invalid chains_ data, because the
         // chain-start indices that live in buckets_ are indices into dynSymbolsTable and will thus
         // also never be less than symoffset_.
-        gnuHash_.chains_ = &gnuHash_.buckets_[gnuHash_.numbuckets_ - gnuHash_.symoffset_];
+        gnuHash_.chains_ = &gnuHash_.buckets_[gnuHash_.numbuckets_ ];
 
         // verify that bloom_size_ is a power of 2
         if ((((uint32_t)(gnuHash_.bloom_size_ - 1)) & gnuHash_.bloom_size_) != 0) {
@@ -294,7 +294,7 @@ ElfW(Sym) const* elfSharedLibData::gnu_find_symbol_by_name(char const* name) con
   // 0x100 - 1 == 0x0ff, and 0x1c3 & 0x0ff = 0x0c3.. the "remainder"
   uint32_t word_num = (hash / kBloomMaskBits) & gnuHash_.bloom_size_;
   ElfW(Addr) bloom_word = gnuHash_.bloom_filter_[word_num];
-
+  ALOG("=========type1");
   // test against bloom filter
   if ((1 & (bloom_word >> (hash % kBloomMaskBits)) & (bloom_word >> (h2 % kBloomMaskBits))) == 0) {
     return nullptr;
@@ -306,7 +306,7 @@ ElfW(Sym) const* elfSharedLibData::gnu_find_symbol_by_name(char const* name) con
   if (n == 0) {
     return nullptr;
   }
-
+    ALOG("=========type2===%s",this->libName);
   do {
     ElfW(Sym) const* s = dynSymbolsTable + n; // identical to &dynSymbolsTable[n]
     // this XOR is mathematically equivalent to (hash1 | 1) == (hash2 | 1), but faster
