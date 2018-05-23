@@ -23,11 +23,11 @@ public class MainActivity extends AppCompatActivity {
 //        Debug.startMethodTracing();
         setContentView(R.layout.activity_main);
         TextView tv = (TextView) findViewById(R.id.sample_text);
-        tv.setText("hellllllllllllo");
+        tv.setText("hellllllllllllo hook");
         tv.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                for (int i = 0; i < 100; i++) {
+                for (int i = 0; i < 10; i++) {
                     Log.d("TT", "xx");
                 }
             }

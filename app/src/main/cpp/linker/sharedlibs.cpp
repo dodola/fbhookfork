@@ -115,6 +115,7 @@ refresh_shared_libs() {
       return 1;
     }
 
+    //通过dl_iterate_phdr 获取载入该进程的所有动态库的信息
     dl_iterate_phdr(+[](dl_phdr_info* info, size_t, void*) {
       if (info->dlpi_name && ends_with(info->dlpi_name, ".so")) {
         addSharedLib(info->dlpi_name, info);

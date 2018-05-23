@@ -91,14 +91,14 @@ elfSharedLibData::elfSharedLibData() {}
 elfSharedLibData::elfSharedLibData(dl_phdr_info const* info) {
   ALOG("===========================elf shared lib data 64==========================");
 
-  ElfW(Dyn) const* dynamic_table = nullptr;
+  ElfW(Dyn) const* dynamic_table = nullptr;//Elf64_Dyn
 
   loadBias = info->dlpi_addr;
   libName = info->dlpi_name;
 
   for (int i = 0; i < info->dlpi_phnum; ++i) {
     ElfW(Phdr) const* phdr = &info->dlpi_phdr[i];
-    if (phdr->p_type == PT_DYNAMIC) {
+    if (phdr->p_type == PT_DYNAMIC) {//获取动态连接信息
       dynamic_table = reinterpret_cast<ElfW(Dyn) const*>(loadBias + phdr->p_vaddr);
       break;
     }
