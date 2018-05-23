@@ -3,6 +3,8 @@
 
 支持`armeabi-v7a`,`arm64-v8a`,`x86`
 
+x86的lib需要使用ndk 17去编译
+
 # Use
 
 ```cpp
