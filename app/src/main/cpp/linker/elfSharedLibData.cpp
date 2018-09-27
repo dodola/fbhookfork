@@ -18,6 +18,7 @@
 #include "locks.h"
 #include "elfSharedLibData.h"
 
+#include "Build.h"
 
 #include <sys/system_properties.h>
 #include <stdlib.h>
@@ -29,11 +30,6 @@
 #define R_ARM_JUMP_SLOT                 22
 #define R_X86_64_JUMP_SLOT	            7
 #define R_AARCH64_JUMP_SLOT             1026
-
-
-#define  LOG_TAG    "HOOOOOOOOK"
-#define  ALOG(...)  __android_log_print(ANDROID_LOG_INFO,LOG_TAG,__VA_ARGS__)
-
 
 #if defined(__arm__)
 #define PLT_RELOCATION_TYPE R_ARM_JUMP_SLOT
@@ -49,7 +45,7 @@
 
 #define DT_GNU_HASH	0x6ffffef5	/* GNU-style hash table.  */
 
-#if defined(__x86__64__) || defined(__aarch64__)
+#if defined(__x86_64__) || defined(__aarch64__)
 # define ELF_RELOC_TYPE ELF64_R_TYPE
 # define ELF_RELOC_SYM  ELF64_R_SYM
 #else
@@ -89,16 +85,14 @@ static uint32_t gnuhash(char const* name) {
 elfSharedLibData::elfSharedLibData() {}
 
 elfSharedLibData::elfSharedLibData(dl_phdr_info const* info) {
-  ALOG("===========================elf shared lib data 64==========================");
-
-  ElfW(Dyn) const* dynamic_table = nullptr;//Elf64_Dyn
+  ElfW(Dyn) const* dynamic_table = nullptr;
 
   loadBias = info->dlpi_addr;
   libName = info->dlpi_name;
 
   for (int i = 0; i < info->dlpi_phnum; ++i) {
     ElfW(Phdr) const* phdr = &info->dlpi_phdr[i];
-    if (phdr->p_type == PT_DYNAMIC) {//获取动态连接信息
+    if (phdr->p_type == PT_DYNAMIC) {
       dynamic_table = reinterpret_cast<ElfW(Dyn) const*>(loadBias + phdr->p_vaddr);
       break;
     }
@@ -132,7 +126,7 @@ elfSharedLibData::elfSharedLibData(dl_phdr_info const* info) {
           reinterpret_cast<Elf_Reloc const*>(loadBias + entry->d_un.d_ptr);
         break;
 
-      // TODO: handle DT_ANDROID_REL[A][SZ]
+      // TODO (t30088113): handle DT_ANDROID_REL[A][SZ]
 
       case DT_SYMTAB:
         dynSymbolsTable =
@@ -174,7 +168,7 @@ elfSharedLibData::elfSharedLibData(dl_phdr_info const* info) {
         // We don't have to ever worry about indexing into invalid chains_ data, because the
         // chain-start indices that live in buckets_ are indices into dynSymbolsTable and will thus
         // also never be less than symoffset_.
-        gnuHash_.chains_ = &gnuHash_.buckets_[gnuHash_.numbuckets_];
+        gnuHash_.chains_ = &gnuHash_.buckets_[gnuHash_.numbuckets_ - gnuHash_.symoffset_];
 
         // verify that bloom_size_ is a power of 2
         if ((((uint32_t)(gnuHash_.bloom_size_ - 1)) & gnuHash_.bloom_size_) != 0) {
@@ -188,42 +182,25 @@ elfSharedLibData::elfSharedLibData(dl_phdr_info const* info) {
         break;
     }
 
-    if (pltRelocationsLen && pltRelocations &&
-        relocationsLen && relocations &&
-        dynSymbolsTable && dynStrsTable &&
-        (elfHash_.numbuckets_ > 0 || gnuHash_.numbuckets_ > 0)) {
+    if (is_complete()) {
       break;
     }
   }
 
-  if (!pltRelocationsLen || !pltRelocations ||
-      !relocationsLen || !relocations ||
-      !dynSymbolsTable || !dynStrsTable ||
-      !(elfHash_.numbuckets_ > 0 || gnuHash_.numbuckets_ > 0)) {
+  if (!is_complete()) {
     // Error, go to next library
     throw input_parse_error("not all info found");
   }
 }
 
-static int getAndroidSdk() {
-  static auto android_sdk = ([] {
-      char sdk_version_str[PROP_VALUE_MAX];
-      __system_property_get("ro.build.version.sdk", sdk_version_str);
-      return atoi(sdk_version_str);
-  })();
-  return android_sdk;
-}
-
+#if !defined(__aarch64__)
 elfSharedLibData::elfSharedLibData(soinfo const* si) {
-  ALOG("===========================elf shared lib data 32==========================");
-#if defined(__x86__64__) || defined(__aarch64__)
-#else
-    pltRelocationsLen = si->plt_rel_count;
-    pltRelocations = si->plt_rel;
-    relocationsLen = si->rel_count;
-    relocations = si->rel;
-    dynSymbolsTable = si->symtab;
-    dynStrsTable = si->strtab;
+  pltRelocationsLen = si->plt_rel_count;
+  pltRelocations = si->plt_rel;
+  relocationsLen = si->rel_count;
+  relocations = si->rel;
+  dynSymbolsTable = si->symtab;
+  dynStrsTable = si->strtab;
 
   elfHash_.numbuckets_ = si->nbucket;
   elfHash_.numchains_ = si->nchain;
@@ -232,15 +209,15 @@ elfSharedLibData::elfSharedLibData(soinfo const* si) {
 
   gnuHash_ = {};
 
-  if (getAndroidSdk() >= 17) {
+  if (facebook::build::Build::getAndroidSdk() >= 17) {
     loadBias = si->load_bias;
   } else {
     loadBias = si->base;
   }
 
   libName = si->name;
-#endif
 }
+#endif
 
 ElfW(Sym) const* elfSharedLibData::find_symbol_by_name(char const* name) const {
   auto sym = usesGnuHashTable() ? gnu_find_symbol_by_name(name)
@@ -294,7 +271,7 @@ ElfW(Sym) const* elfSharedLibData::gnu_find_symbol_by_name(char const* name) con
   // 0x100 - 1 == 0x0ff, and 0x1c3 & 0x0ff = 0x0c3.. the "remainder"
   uint32_t word_num = (hash / kBloomMaskBits) & gnuHash_.bloom_size_;
   ElfW(Addr) bloom_word = gnuHash_.bloom_filter_[word_num];
-  ALOG("=========type1");
+
   // test against bloom filter
   if ((1 & (bloom_word >> (hash % kBloomMaskBits)) & (bloom_word >> (h2 % kBloomMaskBits))) == 0) {
     return nullptr;
@@ -306,7 +283,7 @@ ElfW(Sym) const* elfSharedLibData::gnu_find_symbol_by_name(char const* name) con
   if (n == 0) {
     return nullptr;
   }
-    ALOG("=========type2===%s",this->libName);
+
   do {
     ElfW(Sym) const* s = dynSymbolsTable + n; // identical to &dynSymbolsTable[n]
     // this XOR is mathematically equivalent to (hash1 | 1) == (hash2 | 1), but faster
@@ -357,12 +334,23 @@ std::vector<void**> elfSharedLibData::get_plt_relocations(ElfW(Sym) const* elf_s
   return relocs;
 }
 
+bool elfSharedLibData::is_complete() const {
+  return pltRelocationsLen && pltRelocations &&
+         // relocationsLen && relocations &&     TODO (t30088113): re-enable when DT_ANDROID_REL is supported
+         dynSymbolsTable && dynStrsTable &&
+         (elfHash_.numbuckets_ > 0 || gnuHash_.numbuckets_ > 0);
+}
+
 /* It can happen that, after caching a shared object's data in sharedLibData,
  * the library is unloaded, so references to memory in that address space
  * result in SIGSEGVs. Thus, check here that the addresses are still valid.
 */
 elfSharedLibData::operator bool() const {
   Dl_info info;
+
+  if (!is_complete()) {
+    return false;
+  }
 
   // pltRelocations is somewhat special: the "bad" constructor explicitly sets
   // this to nullptr in order to mark the entire object as invalid. if this check

@@ -44,7 +44,9 @@ public:
   elfSharedLibData();
   // throws input_parse_error if it fails to parse all the info it needs from dlpi
   explicit elfSharedLibData(dl_phdr_info const* dlpi);
+#if !defined(__aarch64__)
   explicit elfSharedLibData(soinfo const* si);
+#endif
 
   /**
    * Returns a pointer to the ElfW(Sym) for the given symbol name.
@@ -95,6 +97,7 @@ private:
   ElfW(Sym) const* elf_find_symbol_by_name(char const*) const;
   ElfW(Sym) const* gnu_find_symbol_by_name(char const*) const;
   std::vector<void**> get_relocations_internal(void*, Elf_Reloc const*, size_t) const;
+  bool is_complete() const;
 
   uintptr_t loadBias {};
   Elf_Reloc const* pltRelocations {};

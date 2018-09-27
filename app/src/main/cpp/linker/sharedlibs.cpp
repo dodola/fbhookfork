@@ -17,125 +17,121 @@
 #include "sharedlibs.h"
 #include "locks.h"
 
+#include "Build.h"
+
 #include <sys/system_properties.h>
 #include <stdlib.h>
 #include <dlfcn.h>
 #include <unordered_map>
 #include <libgen.h>
 
-#define DT_GNU_HASH	0x6ffffef5	/* GNU-style hash table.  */
+#define DT_GNU_HASH    0x6ffffef5    /* GNU-style hash table.  */
 
 namespace facebook {
-namespace linker {
+    namespace linker {
 
-namespace {
+        namespace {
 
-static pthread_rwlock_t sharedLibsMutex_ = PTHREAD_RWLOCK_INITIALIZER;
-static std::unordered_map<std::string, elfSharedLibData>& sharedLibData() {
-  static std::unordered_map<std::string, elfSharedLibData> sharedLibData_;
-  return sharedLibData_;
-}
+            static pthread_rwlock_t sharedLibsMutex_ = PTHREAD_RWLOCK_INITIALIZER;
 
-template <typename Arg>
-bool addSharedLib(char const* libname, Arg&& arg) {
-  if (sharedLibData().find(basename(libname)) == sharedLibData().end()) {
-    try {
-      elfSharedLibData data(std::forward<Arg>(arg));
-      WriterLock wl(&sharedLibsMutex_);
-      return sharedLibData().insert(std::make_pair(basename(libname), std::move(data))).second;
-    } catch (input_parse_error&) {
-      // elfSharedLibData ctor will throw if it is unable to parse input
-      // just ignore it and don't add the library, we'll return false
-    }
-  }
-  return false;
-}
+            static std::unordered_map<std::string, elfSharedLibData> &sharedLibData() {
+                static std::unordered_map<std::string, elfSharedLibData> sharedLibData_;
+                return sharedLibData_;
+            }
 
-bool ends_with(const char* str, const char* ending) {
-  size_t str_len = strlen(str);
-  size_t ending_len = strlen(ending);
+            template<typename Arg>
+            bool addSharedLib(char const *libname, Arg &&arg) {
+#if !defined(__aarch64__)
+                if (sharedLibData().find(basename(libname)) == sharedLibData().end()) {
+                    try {
+                        elfSharedLibData data(std::forward<Arg>(arg));
+                        WriterLock wl(&sharedLibsMutex_);
+                        return sharedLibData().insert(
+                                std::make_pair(basename(libname), std::move(data))).second;
+                    } catch (input_parse_error &) {
+                        // elfSharedLibData ctor will throw if it is unable to parse input
+                        // just ignore it and don't add the library, we'll return false
+                    }
+                }
+#endif
+                return false;
+            }
 
-  if (ending_len > str_len) {
-    return false;
-  }
-  return strcmp(str + (str_len - ending_len), ending) == 0;
-}
+            bool ends_with(const char *str, const char *ending) {
+                size_t str_len = strlen(str);
+                size_t ending_len = strlen(ending);
 
-} // namespace (anonymous)
+                if (ending_len > str_len) {
+                    return false;
+                }
+                return strcmp(str + (str_len - ending_len), ending) == 0;
+            }
 
-elfSharedLibData sharedLib(char const* libname) {
-  ReaderLock rl(&sharedLibsMutex_);
-  auto lib = sharedLibData().at(basename(libname));
-  if (!lib) {
-    throw std::out_of_range(libname);
-  }
-  return lib;
-}
+        } // namespace (anonymous)
 
-std::vector<std::pair<std::string, elfSharedLibData>> allSharedLibs() {
-  ReaderLock rl(&sharedLibsMutex_);
-  std::vector<std::pair<std::string, elfSharedLibData>> libs;
-  libs.reserve(sharedLibData().size());
-  std::copy(sharedLibData().begin(), sharedLibData().end(), std::back_inserter(libs));
-  return libs;
-}
+        elfSharedLibData sharedLib(char const *libname) {
+            ReaderLock rl(&sharedLibsMutex_);
+            auto lib = sharedLibData().at(basename(libname));
+            if (!lib) {
+                throw std::out_of_range(libname);
+            }
+            return lib;
+        }
+
+        std::vector<std::pair<std::string, elfSharedLibData>> allSharedLibs() {
+            ReaderLock rl(&sharedLibsMutex_);
+            std::vector<std::pair<std::string, elfSharedLibData>> libs;
+            libs.reserve(sharedLibData().size());
+            std::copy(sharedLibData().begin(), sharedLibData().end(), std::back_inserter(libs));
+            return libs;
+        }
 
 // for testing. not exposed via header.
-void clearSharedLibs() {
-  WriterLock wl(&sharedLibsMutex_);
-  sharedLibData().clear();
-}
+        void clearSharedLibs() {
+            WriterLock wl(&sharedLibsMutex_);
+            sharedLibData().clear();
+        }
 
-} } // namespace facebook::linker
+    }
+} // namespace facebook::linker
 
 extern "C" {
 
 using namespace facebook::linker;
 #define ANDROID_L  21
 
-
-static int getAndroidSdk() {
-    static auto android_sdk = ([] {
-        char sdk_version_str[PROP_VALUE_MAX];
-        __system_property_get("ro.build.version.sdk", sdk_version_str);
-        return atoi(sdk_version_str);
-    })();
-    return android_sdk;
-}
-
 int
 refresh_shared_libs() {
-  if (getAndroidSdk() >= ANDROID_L) {
-    static auto dl_iterate_phdr =
-      reinterpret_cast<int(*)(int(*)(dl_phdr_info*, size_t, void*), void*)>(
-        dlsym(RTLD_DEFAULT, "dl_iterate_phdr"));
+    if (facebook::build::Build::getAndroidSdk() >= ANDROID_L) {
+        static auto dl_iterate_phdr =
+                reinterpret_cast<int (*)(int(*)(dl_phdr_info *, size_t, void *), void *)>(
+                        dlsym(RTLD_DEFAULT, "dl_iterate_phdr"));
 
-    if (dl_iterate_phdr == nullptr) {
-      // Undefined symbol.
-      return 1;
+        if (dl_iterate_phdr == nullptr) {
+            // Undefined symbol.
+            return 1;
+        }
+
+        dl_iterate_phdr(+[](dl_phdr_info *info, size_t, void *) {
+            if (info->dlpi_name && ends_with(info->dlpi_name, ".so")) {
+                addSharedLib(info->dlpi_name, info);
+            }
+            return 0;
+        }, nullptr);
+    } else {
+        soinfo *si = reinterpret_cast<soinfo *>(dlopen(nullptr, RTLD_LOCAL));
+
+        if (si == nullptr) {
+            return 1;
+        }
+
+        for (; si != nullptr; si = si->next) {
+            if (si->link_map.l_name && ends_with(si->link_map.l_name, ".so")) {
+                addSharedLib(si->link_map.l_name, si);
+            }
+        }
     }
-
-    //通过dl_iterate_phdr 获取载入该进程的所有动态库的信息
-    dl_iterate_phdr(+[](dl_phdr_info* info, size_t, void*) {
-      if (info->dlpi_name && ends_with(info->dlpi_name, ".so")) {
-        addSharedLib(info->dlpi_name, info);
-      }
-      return 0;
-    }, nullptr);
-  } else {
-    soinfo* si = reinterpret_cast<soinfo*>(dlopen(nullptr, RTLD_LOCAL));
-
-    if (si == nullptr) {
-      return 1;
-    }
-
-    for (; si != nullptr; si = si->next) {
-      if (si->link_map.l_name && ends_with(si->link_map.l_name, ".so")) {
-        addSharedLib(si->link_map.l_name, si);
-      }
-    }
-  }
-  return 0;
+    return 0;
 }
 
 } // extern C

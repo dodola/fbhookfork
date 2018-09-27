@@ -17,10 +17,9 @@
 #include "sig_safe_write.h"
 
 #include <sys/syscall.h>
+#include <unistd.h>
 
 #include "sigmux.h"
-#include <unistd.h>
-#include <errno.h>
 
 struct fault_handler_data {
     int tid;

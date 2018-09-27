@@ -16,34 +16,25 @@
 
 #pragma once
 
-#ifdef __ANDROID__
-
-#include <android/log.h>
 #include <stdlib.h>
 
-#ifdef LOG_TAG
-#define LINKER_ASSERT_LOG_TAG LOG_TAG
-#else
-#define LINKER_ASSERT_LOG_TAG "linkerlib"
+#if defined(__ANDROID__)
+#include <sys/system_properties.h>
 #endif
 
-__attribute__ ((noreturn))
-static void log_assert(char const* msg) {
-  __android_log_assert("", LINKER_ASSERT_LOG_TAG, "%s", msg);
-  abort(); // just for good measure
-}
+namespace facebook {
+namespace build {
 
-#else
+struct Build {
+  static int getAndroidSdk() {
+    static auto android_sdk = ([] {
+      char sdk_version_str[PROP_VALUE_MAX];
+      __system_property_get("ro.build.version.sdk", sdk_version_str);
+      return atoi(sdk_version_str);
+    })();
+    return android_sdk;
+  }
+};
 
-#include <stdio.h>
-#include <stdlib.h>
-
-__attribute__ ((noreturn))
-static void log_assert(char const* msg) {
-  fputs("Assertion Failure: ", stderr);
-  fputs(msg, stderr);
-  fputc('\n', stderr);
-  abort();
-}
-
-#endif
+} // namespace build
+} // namespace facebook

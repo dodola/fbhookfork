@@ -9,9 +9,22 @@ set(UTILS_SOURCE
         sharedlibs.cpp
         sig_safe_write.c
         sigmux.c
+        trampoline.cpp
         )
 
+if (${ANDROID_ABI} STREQUAL "x86")
+    set(TRAMPOLINE trampoline_x86.c)
+else ()
+    set(TRAMPOLINE trampoline_arm.c)
+endif ()
+
+
+message(${UTILS_SOURCE})
+message("sdfsdfsdfsdf" +${ANDROID_ABI})
+message(${TRAMPOLINE})
 add_library(linker
         STATIC
-        ${UTILS_SOURCE})
+        ${UTILS_SOURCE}
+        ${TRAMPOLINE}
+        )
 target_link_libraries(linker)
