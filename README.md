@@ -1,9 +1,9 @@
 # fbhookfork
 从 fb 的 profilo 项目里提取出来的plt hook 库，自己用
 
-支持`armeabi-v7a`,`arm64-v8a`,`x86`
+支持`armeabi-v7a`,`x86`
 
-x86的lib需要使用ndk 17去编译
+x86的lib需要使用ndk 18去编译
 
 # Use
 
