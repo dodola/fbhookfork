@@ -13,7 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 __attribute__((naked))
 void trampoline_template() {
   // save registers we clobber (lr) and this particular hook's chained function

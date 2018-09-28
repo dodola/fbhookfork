@@ -45,7 +45,8 @@
 #include <vector>
 #include <unordered_set>
 #include <functional>
-
+#define  LOG_TAG    "HOOOOOOOOK"
+#define  ALOG(...)  __android_log_print(ANDROID_LOG_INFO,LOG_TAG,__VA_ARGS__)
 #define PAGE_ALIGN(ptr, pagesize) (void*) (((uintptr_t) (ptr)) & ~((pagesize) - 1))
 
 using namespace facebook::linker;

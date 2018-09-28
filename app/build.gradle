@@ -1,7 +1,7 @@
 apply plugin: 'com.android.application'
 
 android {
-    compileSdkVersion 27
+    compileSdkVersion 28
     defaultConfig {
         applicationId "com.dodola.tracehooker"
         minSdkVersion 14
@@ -12,7 +12,6 @@ android {
         externalNativeBuild {
             cmake {
                 abiFilters "armeabi-v7a",  "x86"
-                arguments "-DANDROID_TOOLCHAIN=gcc"
             }
         }
     }

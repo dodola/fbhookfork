@@ -28,13 +28,9 @@ bool first_enable = true;
 
 
 void log_systrace(int fd, const void *buf, size_t count) {
+    const char *msg = reinterpret_cast<const char *>(buf);
+    ALOG("waitme===%s", msg);
 
-    if (systrace_installed &&
-        fd == *atrace_marker_fd &&
-        count > 0) {
-        const char *msg = reinterpret_cast<const char *>(buf);
-        ALOG("waitme===%s", msg);
-    }
 }
 
 
@@ -185,8 +181,8 @@ void restoreSystrace() {
 
 bool installSystraceHook() {
     try {
+        ALOG("===============install systrace hoook==================");
         installSystraceSnooper();
-
         return true;
     } catch (const std::runtime_error &e) {
         return false;

@@ -34,7 +34,8 @@
 #define PR_SET_VMA_ANON_NAME 0
 #endif // PR_SET_VMA
 #endif // ANDROID
-
+#define  LOG_TAG    "HOOOOOOOOK"
+#define  ALOG(...)  __android_log_print(ANDROID_LOG_INFO,LOG_TAG,__VA_ARGS__)
 namespace facebook {
 namespace linker {
 
@@ -184,6 +185,7 @@ class trampoline {
             reinterpret_cast<uintptr_t>(trampoline_template_pointer())),
         code_(allocate(code_size_ + trampoline_data_size())) {
 #ifdef LINKER_TRAMPOLINE_SUPPORTED_ARCH
+      ALOG("============install trampoline===========");
     std::memcpy(code_, trampoline_template_pointer(), code_size_);
 
     auto* data = reinterpret_cast<uint32_t*>(
@@ -195,6 +197,7 @@ class trampoline {
     *data++ = reinterpret_cast<uint32_t>(chained);
 #endif
   }
+
 
   trampoline(trampoline const&) = delete;
   trampoline(trampoline&&) = delete;

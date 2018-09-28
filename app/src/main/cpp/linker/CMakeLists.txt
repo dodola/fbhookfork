@@ -18,9 +18,6 @@ else ()
     set(TRAMPOLINE trampoline_arm.c)
 endif ()
 
-
-message(${UTILS_SOURCE})
-message("sdfsdfsdfsdf" +${ANDROID_ABI})
 message(${TRAMPOLINE})
 add_library(linker
         STATIC
