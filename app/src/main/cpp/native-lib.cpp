@@ -14,8 +14,8 @@
 #include <libgen.h>
 #include <sys/system_properties.h>
 #include <vector>
-#include <linker.h>
-#include <hooks.h>
+#include "linker.h"
+#include "hooks.h"
 
 #define  LOG_TAG    "HOOOOOOOOK"
 #define  ALOG(...)  __android_log_print(ANDROID_LOG_INFO,LOG_TAG,__VA_ARGS__)
@@ -45,45 +45,10 @@ ssize_t __write_chk_hook(int fd, const void *buf, size_t count, size_t buf_size)
 }
 
 
-std::vector<std::pair<char const *, void *>> &getFunctionHooks() {
-    static std::vector<std::pair<char const *, void *>> functionHooks = {
-            {"write",       reinterpret_cast<void *>(&write_hook)},
-            {"__write_chk", reinterpret_cast<void *>(__write_chk_hook)},
-    };
-    return functionHooks;
-}
-
-// Returns the set of libraries that we don't want to hook.
-std::unordered_set<std::string> &getSeenLibs() {
-    static bool init = false;
-    static std::unordered_set<std::string> seenLibs;
-
-    // Add this library's name to the set that we won't hook
-    if (!init) {
-
-        seenLibs.insert("libc.so");
-
-        Dl_info info;
-        if (!dladdr((void *) &getSeenLibs, &info)) {
-            ALOG("Failed to find module name");
-        }
-        if (info.dli_fname == nullptr) {
-            // Not safe to continue as a thread may block trying to hook the current
-            // library
-            throw std::runtime_error("could not resolve current library");
-        }
-
-        seenLibs.insert(basename(info.dli_fname));
-        init = true;
-    }
-    return seenLibs;
-}
-
 void hookLoadedLibs() {
-    auto &functionHooks = getFunctionHooks();
-    auto &seenLibs = getSeenLibs();
+    hook_plt_method("libc.so", "write", (hook_func) &write_hook);
+    hook_plt_method("libc.so", "__write_chk", (hook_func) &__write_chk_hook);
 
-    facebook::profilo::hooks::hookLoadedLibs(functionHooks, seenLibs);
 }
 
 static int getAndroidSdk() {

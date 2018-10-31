@@ -34,7 +34,7 @@ typedef void* hook_func;
 typedef void** reloc;
 
 /**
- * Guards initialization from above. Can be used to no-op calls to 
+ * Guards initialization from above. Can be used to no-op calls to
  * linker_initialize by calling this with `false`.
  */
 void
@@ -117,6 +117,17 @@ int
 hook_all_libs(plt_hook_spec* specs, size_t num_specs,
     bool (*allowHookingLib)(char const* libname, void* data), void* data);
 
+// Counterparts to the all hook_* routines:
+
+int
+unhook_plt_method(const char* libname, const char* name, hook_func hook);
+
+int
+unhook_single_lib(char const* libname, plt_hook_spec* specs, size_t num_specs);
+
+int
+unhook_all_libs(plt_hook_spec* specs, size_t num_specs);
+
 /**
  * Calls the original (or at least, previous) method pointed to by the PLT.
  * Looks up PLT entries by hook *and* by library, since each library has its
@@ -149,7 +160,7 @@ hook_all_libs(plt_hook_spec* specs, size_t num_specs,
 
 #define __CALL_PREV_IMPL(hook, hook_sig, ...)                           \
   ({                                                                    \
-    void* _prev = get_chained_plt_method();                             \
+    void* _prev = get_previous_from_hook((void*) hook);                 \
     ((hook_sig)_prev)(__VA_ARGS__);                                     \
   })
 /**
@@ -160,7 +171,7 @@ hook_all_libs(plt_hook_spec* specs, size_t num_specs,
  *                  appropriate entry of the appropriate PLT
  */
 void*
-get_chained_plt_method();
+get_previous_from_hook(void* hook);
 
 #ifdef __cplusplus
 } // extern "C"

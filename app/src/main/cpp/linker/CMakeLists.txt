@@ -10,6 +10,7 @@ set(UTILS_SOURCE
         sig_safe_write.c
         sigmux.c
         trampoline.cpp
+        abort_with_reason.c
         )
 
 if (${ANDROID_ABI} STREQUAL "x86")

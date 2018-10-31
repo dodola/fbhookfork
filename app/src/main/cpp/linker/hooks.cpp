@@ -1,68 +1,204 @@
-// Copyright 2004-present Facebook. All Rights Reserved.
+/**
+ * Copyright 2004-present, Facebook, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
-#include "linker.h"
-
-#include <stdexcept>
-#include <unordered_set>
-#include <string>
+#include "hooks.h"
+#include "locks.h"
+#include <stdlib.h>
+#include <algorithm>
+#include <atomic>
+#include <map>
+#include <memory>
 #include <vector>
-#include <utility>
-#include <android/log.h>
 
-#define  LOG_TAG    "HOOOOOOOOK"
-#define  ALOG(...)  __android_log_print(ANDROID_LOG_INFO,LOG_TAG,__VA_ARGS__)
 namespace facebook {
-    namespace profilo {
+namespace linker {
+namespace hooks {
 
-        namespace {
+namespace {
 
-            bool allowHookingCb(char const *libname, void *data) {
+struct InternalHookInfo {
+  HookId id;
+  uintptr_t got_address;
+  std::vector<void*> hooks;
 
-                std::unordered_set<std::string> *seenLibs =
-                        static_cast<std::unordered_set<std::string> *>(data);
-//                for (auto const &pair : *seenLibs) {
-//                    ALOG("allowHookCB====%s", pair.c_str());
-//                }
-                if (seenLibs->find(libname) != seenLibs->cend()) {
-                    // We already hooked (or saw and decided not to hook) this library.
-                    return false;
-                }
-                seenLibs->insert(libname);
-                return true;
-            }
+  pthread_rwlock_t mutex;
+  InternalHookInfo()
+      : id(), got_address(), hooks(), mutex(PTHREAD_RWLOCK_INITIALIZER) {}
+};
 
-        } // anonymous namespace
+struct Globals {
+  // These are std::map instead of unordered_map because GOT addresses
+  // are not sufficiently random for a hash map.
+  std::map<HookId, std::shared_ptr<InternalHookInfo>> hooks_by_id;
+  std::map<uintptr_t, std::shared_ptr<InternalHookInfo>> hooks_by_got_address;
+  pthread_rwlock_t map_mutex;
 
-        namespace hooks {
+  std::atomic<HookId> next_id;
 
-            // Arguments:
-            // functionHooks: vector of pairs {"function", ptr_to_function}
-            //                eg: {{"write", writeHook}, {"read", readHook}},
-            // seenLibs: libraries that we have seen (might or might not be hooked). This
-            //           is used for 2 reasons:
-            //           1) Allow the client to blacklist libraries.
-            //           2) Avoid hooking the same library twice.
-            void hookLoadedLibs(
-                    const std::vector<std::pair<char const *, void *>> &functionHooks,
-                    std::unordered_set<std::string> &seenLibs) {
+  Globals()
+      : hooks_by_id(),
+        hooks_by_got_address(),
+        map_mutex(PTHREAD_RWLOCK_INITIALIZER),
+        next_id(1) {}
+};
 
-                std::vector<plt_hook_spec> specs{};
-                specs.reserve(functionHooks.size());
+Globals& getGlobals() {
+  static Globals globals{};
+  return globals;
+}
 
-                for (auto const &hookPair : functionHooks) {
-                    char const *functionName = hookPair.first;
-                    void *hook = hookPair.second;
-                    specs.emplace_back(nullptr, functionName, hook);
-                }
+} // namespace
 
-                int ret = hook_all_libs(specs.data(), specs.size(), allowHookingCb,
-                                        static_cast<void *>(&seenLibs));
+inline HookId allocate_id() {
+  return getGlobals().next_id.fetch_add(1);
+}
 
-                if (ret) {
-                    throw std::runtime_error("Could not hook libraries");
-                }
-            }
+bool is_hooked(uintptr_t got_address) {
+  auto& globals = getGlobals();
+  auto& map = globals.hooks_by_got_address;
+  ReaderLock lock(&globals.map_mutex);
+  return map.find(got_address) != map.end();
+}
 
-        } // namespace hooks
-    } // namespace profilo
+ssize_t list_size(HookId id) {
+  auto& globals = getGlobals();
+  auto& map = globals.hooks_by_id;
+  ReaderLock map_lock(&globals.map_mutex);
+  auto it = map.find(id);
+  if (it == map.end()) {
+    // Hook not registered
+    return -1;
+  }
+
+  auto& info = *it->second;
+  ReaderLock info_lock(&info.mutex);
+  return info.hooks.size();
+}
+
+std::vector<void*> get_run_list(HookId id) {
+  auto& globals = getGlobals();
+  auto& map = globals.hooks_by_id;
+  ReaderLock map_lock(&globals.map_mutex);
+  auto it = map.find(id);
+  if (it == map.end()) {
+    // Hook not registered
+    return {};
+  }
+
+  auto& info = *it->second;
+  ReaderLock info_lock(&info.mutex);
+
+  return info.hooks;
+}
+
+HookResult add(HookInfo& info) {
+  auto& globals = getGlobals();
+  if (info.previous_function == nullptr || info.new_function == nullptr ||
+      info.got_address == 0) {
+    return WRONG_HOOK_INFO;
+  }
+
+  auto& got_map = globals.hooks_by_got_address;
+
+  // First try just taking the reader lock, in case we already have an entry.
+  {
+    ReaderLock map_lock(&globals.map_mutex);
+    auto it = got_map.find(info.got_address);
+    if (it != got_map.end()) {
+      // Success, we already have an entry for this GOT address.
+      auto& internal_info = *it->second;
+      WriterLock info_lock(&internal_info.mutex);
+      internal_info.hooks.emplace_back(info.new_function);
+      return ALREADY_HOOKED_APPENDED;
+    }
+  }
+  // Okay, we need to do this from scratch.
+
+  auto internal_info = std::make_shared<InternalHookInfo>();
+  // No one else can have internal_info so no point taking the writer lock.
+
+  internal_info->id = allocate_id();
+  internal_info->got_address = info.got_address;
+  internal_info->hooks.emplace_back(info.previous_function);
+  internal_info->hooks.emplace_back(info.new_function);
+
+  WriterLock map_lock(&globals.map_mutex);
+  globals.hooks_by_got_address.emplace(
+      internal_info->got_address, internal_info);
+  globals.hooks_by_id.emplace(internal_info->id, internal_info);
+
+  info.out_id = internal_info->id;
+  return NEW_HOOK;
+}
+
+HookResult remove(HookInfo& info) {
+  auto& globals = getGlobals();
+  if (info.new_function == nullptr || info.got_address == 0) {
+    return WRONG_HOOK_INFO;
+  }
+
+  WriterLock map_lock(&globals.map_mutex);
+  auto& got_map = globals.hooks_by_got_address;
+  auto it = got_map.find(info.got_address);
+  if (it == got_map.end()) {
+    return WRONG_HOOK_INFO;
+  }
+  // Success, we already have an entry for this GOT address.
+  // Take a reference to the shared_ptr to keep the data around
+  // as we go about clearing the indices.
+  auto internal_info = it->second;
+  WriterLock info_lock(&internal_info->mutex);
+
+  if (internal_info->hooks.size() == 1) {
+    // Double-check the case where there's only one item left.
+    if (internal_info->hooks.at(0) != info.new_function) {
+      return WRONG_HOOK_INFO;
+    }
+    // Okay, we have one item and we want to remove it, let's
+    // clear all the data structures.
+    globals.hooks_by_got_address.erase(it);
+
+    // We cannot remove this hook from hooks_by_id because another thread
+    // may be racing with us and entering the trampoline, so it would need
+    // to be able to look things up by id.
+
+    return REMOVED_FULLY;
+  }
+
+  auto hooks_it = std::find(
+      internal_info->hooks.begin(),
+      internal_info->hooks.end(),
+      info.new_function);
+  if (hooks_it == internal_info->hooks.end()) {
+    return WRONG_HOOK_INFO;
+  }
+
+  if (hooks_it == internal_info->hooks.begin()) {
+    // Can't remove the original function if you have hooks after it.
+    return WRONG_HOOK_INFO;
+  }
+
+  internal_info->hooks.erase(hooks_it);
+  auto previous_function = internal_info->hooks.at(0); // original function
+  info.previous_function = previous_function;
+
+  return internal_info->hooks.size() == 1 ? REMOVED_TRIVIAL
+                                          : REMOVED_STILL_HOOKED;
+}
+
+} // namespace hooks
+} // namespace linker
 } // namespace facebook

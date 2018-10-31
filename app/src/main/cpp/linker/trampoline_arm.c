@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 __attribute__((naked))
 void trampoline_template() {
   // save registers we clobber (lr) and this particular hook's chained function
@@ -23,13 +24,13 @@ void trampoline_template() {
   // We intentionally clobber ip, it's an inter-procedure scratch register anyway.
   asm(
     "push  { r0 - r3 };" // AAPCS doesn't require preservation of r0 - r3 across calls, so save em temporarily
-    "ldr   r0, .L_chained;" // store chained function for easy lookup
+    "ldr   r0, .L_hook_id;" // store hook id
     "mov   r1, lr;" // save lr so we know where to go back to once this is all done
     "ldr   ip, .L_push_hook_stack;"
     "blx   ip;"
+    "mov   ip, r0;" // return value saved, that's the hook we'll call
     "pop   { r0 - r3 };" // bring the hook's original parameters back
 
-    "ldr   ip, .L_hook;"
     "blx   ip;" // switches to ARM or Thumb mode appropriately since target is a register
 
     // now restore what we saved above
@@ -47,9 +48,7 @@ void trampoline_template() {
     ".word 0;"
     ".L_pop_hook_stack:"
     ".word 0;"
-    ".L_hook:"
-    ".word 0;"
-    ".L_chained:"
+    ".L_hook_id:"
     ".word 0;"
   );
 }
