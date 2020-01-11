@@ -1,0 +1,30 @@
+load("//tools/build_defs/oss:profilo_defs.bzl", "profilo_oss_cxx_library", "profilo_path")
+
+profilo_oss_cxx_library(
+    name = "abort-with-reason",
+    srcs = [
+        "abort_with_reason.c",
+    ],
+    header_namespace = "",
+    exported_headers = [
+        "abort_with_reason.h",
+    ],
+    compiler_flags = [
+        # Make legacy Breakpad code compile, for now
+        "-Wno-unused-variable",
+        "-Wno-unused-function",
+        "-Wno-unused-private-field",
+        "-Wno-reorder",
+        "-Wno-empty-body",
+        "-Wno-deprecated-register",
+        "-Wno-format-security",
+    ],
+    preferred_linkage = "static",
+    soname = "libbreakpadabort.$(ext)",
+    visibility = [
+        "PUBLIC",
+    ],
+    deps = [
+        profilo_path("deps/fb:fb"),
+    ],
+)

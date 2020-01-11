@@ -1,9 +1,8 @@
-/*
- * Copyright (C) 2018 Baidu, Inc. All Rights Reserved.
- */
 package com.dodola.tracehooker;
 
 import android.app.Application;
+
+import com.facebook.profilo.provider.atrace.Atrace;
 
 /**
  * Created by dodola on 2018/5/8.

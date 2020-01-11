@@ -1,0 +1,40 @@
+load("//tools/build_defs/oss:profilo_defs.bzl", "profilo_oss_cxx_library", "profilo_path")
+
+profilo_oss_cxx_library(
+    name = "linker",
+    srcs = glob(
+        ["*.cpp"],
+    ),
+    header_namespace = "linker",
+    exported_headers = glob(["*.h"]),
+    compiler_flags = [
+        "-std=c++14",
+        "-fexceptions",
+    ],
+    platform_preprocessor_flags = [
+        (
+            "android-(arm|armv7)$",
+            ["-D__ARM__"],
+        ),
+        (
+            "android-x86$",
+            ["-D__X86__"],
+        ),
+    ],
+    preferred_linkage = "shared",
+    preprocessor_flags = [
+        "-DLOG_TAG=\"Profilo/linker\"",
+    ],
+    soname = "libprofilo_linker.$(ext)",
+    visibility = [
+        "PUBLIC",
+    ],
+    deps = [
+        profilo_path("deps/breakpad:abort-with-reason"),
+        profilo_path("deps/build:build"),
+        profilo_path("deps/cjni:cjni"),
+        profilo_path("deps/fb:fb"),
+        profilo_path("deps/sig_safe_write:sig_safe_write"),
+        profilo_path("deps/sigmux:sigmux"),
+    ],
+)

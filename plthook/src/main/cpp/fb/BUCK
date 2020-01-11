@@ -1,0 +1,37 @@
+load("//tools/build_defs/oss:profilo_defs.bzl", "profilo_oss_cxx_library", "profilo_path")
+
+profilo_oss_cxx_library(
+    name = "fb",
+    srcs = glob(
+        [
+            "**/*.cpp",
+        ],
+        exclude = [
+            "jni/android/*.cpp",
+        ],
+    ),
+    header_namespace = "fb",
+    exported_headers = glob([
+        "**/*.h",
+    ]),
+    compiler_flags = [
+        "-fexceptions",
+        "-fno-omit-frame-pointer",
+        "-frtti",
+        "-ffunction-sections",
+    ],
+    exported_linker_flags = [
+        "-llog",
+    ],
+    preprocessor_flags = [
+        "-DDISABLE_CPUCAP",
+        "-DDISABLE_XPLAT",
+    ],
+    soname = "libprofilo_fb.$(ext)",
+    visibility = [
+        "PUBLIC",
+    ],
+    deps = [
+        profilo_path("deps/fbjni:fbjni"),
+    ],
+)

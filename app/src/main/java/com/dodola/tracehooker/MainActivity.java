@@ -5,7 +5,7 @@ package com.dodola.tracehooker;
 
 import android.os.Bundle;
 import android.os.Trace;
-import android.support.v7.app.AppCompatActivity;
+import androidx.appcompat.app.AppCompatActivity;
 import android.util.Log;
 import android.view.View;
 import android.widget.TextView;
@@ -16,8 +16,6 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-//        Atrace.hookwrite();
-//        Debug.startMethodTracing();
 
         Trace.beginSection("test");
 //        Debug.startMethodTracing();
